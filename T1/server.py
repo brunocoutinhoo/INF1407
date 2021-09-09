@@ -1,29 +1,15 @@
+"""
+
+"""
+
 from sys import argv, stderr
-from posix import abort
+# tem que baixar o posix
+from os import abort
 from socket import getaddrinfo, socket
 from socket import AF_INET, SOCK_STREAM, AI_ADDRCONFIG, AI_PASSIVE
 from socket import IPPROTO_TCP, SOL_SOCKET, SO_REUSEADDR
 from socket import gethostbyname
 from socket import gaierror
-
-def main():
-    if len(argv) == 2:
-        porta = int(argv[1])
-    else:
-        porta = 8752
-    enderecoHost = getEnderecoHost(porta)
-    fd = criaSocket(enderecoHost)
-    setModo(fd)
-    bindaSocket(fd, porta)
-    print("Servidor pronto em", enderecoHost)
-    escuta(fd)
-    while True:
-        con = conecta(fd)
-        if con == -1:
-            continue
-        fazTudo(con)
-    return
-
 
 def getEnderecoHost(porta):
     try:
@@ -78,9 +64,37 @@ def fazTudo(fd):
         if not buffer:
             break
         print('==>', buffer)
+        print("PAROUUUUUUUUUUUUUUUU")
+        buffer = """
+                HTTP/1.1 200 OK
+                Content-Type: text/html
+                Content-Length: 111
+
+                <html><body>
+                <h2>No Host: header received</h2>
+                HTTP 1.1 requests must include the Host: header.
+                </body></html>"""
         fd.send(bytearray(buffer, 'utf-8'))
     print("Conexão terminada com", fd)
     fd.close()
+    return
+
+def main():
+    if len(argv) == 2:
+        porta = int(argv[1])
+    else:
+        porta = 8752
+    enderecoHost = getEnderecoHost(porta)
+    fd = criaSocket(enderecoHost)
+    setModo(fd)
+    bindaSocket(fd, porta)
+    print("Servidor pronto em", enderecoHost)
+    escuta(fd)
+    while True:
+        con = conecta(fd)
+        if con == -1:
+            continue
+        fazTudo(con)
     return
 
 if __name__ == '__main__':

@@ -3,7 +3,6 @@
 """
 
 from sys import argv, stderr
-# tem que baixar o posix
 from os import abort
 from socket import getaddrinfo, socket
 from socket import AF_INET, SOCK_STREAM, AI_ADDRCONFIG, AI_PASSIVE
@@ -58,15 +57,45 @@ def conecta(fd):
     print("Servidor conectado com", cliente)
     return con
 
-def fazTudo(fd):
-    while True:
-        buffer = fd.recv(1024).decode("utf-8")
-        if not buffer:
-            break
-        print('==>', buffer)
-        print("PAROUUUUUUUUUUUUUUUU")
-        buffer = """
-                HTTP/1.1 200 OK
+def leRequisicao(buffer):
+    """ Recebe buffer da requisição, faz o parse e, caso ok, retorna endereço para arquivo solicitado.
+    
+    Args:
+        buffer: string com texto da requisição
+    Returns:
+        0, caso haja erro na requisição ou caso não seja do tipo GET
+        string com caminho para arquivo.
+    """
+    return "exemplo_hard_coded.html"
+
+def encontraArquivo(caminho):
+    """ Recebe caminho para arquivo e retorna status code que será dado e caminho.
+
+    Caso não encontre arquivo com o nome especificado, procura nos arquivos default. 
+    Por último, se não conseguir, retorna arquivo 404.
+
+    Args:
+        caminho: string com o caminho para o arquivo desejado. Ex: "home/cursos/INF1407.html"
+    Returns:
+        codigo_status, caminho: inteiro correspondente à resposta ao GET (200 ou 404)
+            e caminho para o arquivo que deverá ser passado para o cliente
+    """
+    return 200, "exemplo_hard_coded.html"
+    pass
+
+def montaResposta(codigo_status, caminho):
+    """ Monta bytearray com resposta que será dada ao cliente a partir dos argumentos recebidos.
+
+    Args:
+        codigo_status: inteiro correspondente à status code (200 ou 404)
+        caminho: caminho para o arquivo que deverá ser passado para o cliente
+    Returns:
+        bytearray com resposta completa que será dada ao cliente, com status code, mensagem,
+            tamanho do arquivo em bytes, etc.
+    """
+
+    # obs: tem que contar o tamanho do arquivo em bytes para passar na resposta também.
+    buffer_hard_coded = """HTTP/1.1 200 OK
                 Content-Type: text/html
                 Content-Length: 111
 
@@ -74,7 +103,30 @@ def fazTudo(fd):
                 <h2>No Host: header received</h2>
                 HTTP 1.1 requests must include the Host: header.
                 </body></html>"""
-        fd.send(bytearray(buffer, 'utf-8'))
+    
+    # p/ montar de vdd depois:
+    #with open('home.html', 'r') as file:
+    #   data = bytearray(file.read(), 'utf-8')
+    # alem disso, bytearrays podem ser concatenados usando '+'. exemplo:
+    # ex1 = bytearray("abc", "utf-8") + bytearray("def", "utf-8")
+    # ex1 = bytearray(b'abcdef')
+    
+    return bytearray(buffer_hard_coded, 'utf-8')
+
+def fazTudo(fd):
+    while True:
+        buffer = fd.recv(1024).decode("utf-8")
+        if not buffer:
+            break
+        endereco = leRequisicao(buffer)
+        if endereco:
+            codigo_status, caminho = encontraArquivo(endereco)
+            texto_resposta = montaResposta(codigo_status, caminho)
+        else:
+            pass
+        print(texto_resposta)
+        fd.send(texto_resposta)
+
     print("Conexão terminada com", fd)
     fd.close()
     return

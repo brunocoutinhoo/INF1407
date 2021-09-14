@@ -3,12 +3,14 @@
 """
 
 from sys import argv, stderr
-from os import abort
+from os import abort, path
 from socket import getaddrinfo, socket
 from socket import AF_INET, SOCK_STREAM, AI_ADDRCONFIG, AI_PASSIVE
 from socket import IPPROTO_TCP, SOL_SOCKET, SO_REUSEADDR
 from socket import gethostbyname
 from socket import gaierror
+import re
+from arquivo import EXTENSOES_CONHECIDAS
 
 def getEnderecoHost(porta):
     try:
@@ -63,27 +65,71 @@ def leRequisicao(buffer):
     Args:
         buffer: string com texto da requisição
     Returns:
-        0, caso haja erro na requisição ou caso não seja do tipo GET
-        string com caminho para arquivo.
+        - None, caso haja erro na requisição ou caso não seja do tipo GET
+        - caminho, versao, tipo_arquivo. três strings: caminho para o arquivo solicitado (caso seja
+            vazio, será "/"), versão HTTP e tipo do arquivo, caso haja
     """
-    return "exemplo_hard_coded.html"
 
-def encontraArquivo(caminho):
+    if buffer[:3] == 'GET':
+        comando_completo = buffer.split()
+        caminho = comando_completo[1]
+        versao = comando_completo[2]
+
+        tipo_regex = re.compile(r'[^.]*$')
+        procura_pattern = tipo_regex.search(caminho)
+        tipo_arquivo = procura_pattern.group(0)
+    else:
+        print("Comando GET não encontrado")
+        return None
+
+    return caminho, versao, tipo_arquivo
+
+def encontraArquivo(caminho, tipo_arquivo):
     """ Recebe caminho para arquivo e retorna status code que será dado e caminho.
 
-    Caso não encontre arquivo com o nome especificado, procura nos arquivos default. 
-    Por último, se não conseguir, retorna arquivo 404.
+    Caso arquivo não tenha sido especificado, procura nos arquivos default. 
+    Caso a extensão do arquivo seja desconhecida ou se não for encontrado, retorna arquivo 404.
 
     Args:
         caminho: string com o caminho para o arquivo desejado. Ex: "home/cursos/INF1407.html"
+        tipo_arquivo:
     Returns:
-        codigo_status, caminho: inteiro correspondente à resposta ao GET (200 ou 404)
+        codigo_status, caminho, tipo_arquivo: inteiro correspondente à resposta ao GET (200 ou 404)
             e caminho para o arquivo que deverá ser passado para o cliente
     """
-    return 200, "exemplo_hard_coded.html"
-    pass
 
-def montaResposta(codigo_status, caminho):
+    if not path.isfile(caminho[1:]) or (tipo_arquivo!= "/" and not EXTENSOES_CONHECIDAS.get(tipo_arquivo, 0)):
+        #TODO: buscar qual é o 404 do arq de config e exibí-lo; trocar esse [1:]
+        return 404, "templates/erro404.html", "html"
+    elif tipo_arquivo == "/":
+        #TODO: olhar nos arquivos default, retornar primeiro deles que seja válido (ou seja, q exista e
+        # tenha tipo conhecido)
+        return 404, "templates/erro404.html", "html"
+    else:
+        #TODO: trocar esse [1:]
+        return 200, caminho[1:], tipo_arquivo
+
+def primeiraLinhaHeader(codigo_status):
+    #TODO: cabeçalho
+    if codigo_status == 200:
+        return bytes("HTTP/1.1 200 OK\r\n", "utf-8")
+    elif codigo_status == 404:
+        return bytes("HTTP/1.1 404 Not Found\r\n", "utf-8")
+    else:
+        print("Erro: Resposta não conhecida", file=stderr)
+        abort()
+
+def segundaLinhaHeader(tipo_arquivo):
+    #TODO: cabeçalho
+    mime_type = EXTENSOES_CONHECIDAS.get(tipo_arquivo)
+    return bytes(f"Content-Type: {mime_type}\r\n", "utf-8")
+
+def terceiraLinhaHeader(caminho):
+    #TODO: cabeçalho
+    tamanho = path.getsize(caminho)
+    return bytes(f"Content-Length: {tamanho}\r\n\r\n", "utf-8")
+
+def montaResposta(codigo_status, tipo_arquivo, caminho):
     """ Monta bytearray com resposta que será dada ao cliente a partir dos argumentos recebidos.
 
     Args:
@@ -93,37 +139,31 @@ def montaResposta(codigo_status, caminho):
         bytearray com resposta completa que será dada ao cliente, com status code, mensagem,
             tamanho do arquivo em bytes, etc.
     """
-
-    # obs: tem que contar o tamanho do arquivo em bytes para passar na resposta também.
-    buffer_hard_coded = """HTTP/1.1 200 OK
-                Content-Type: text/html
-                Content-Length: 111
-
-                <html><body>
-                <h2>No Host: header received</h2>
-                HTTP 1.1 requests must include the Host: header.
-                </body></html>"""
+    #TODO: add mais coisa na header? nome do servidor, etc.
+    header = primeiraLinhaHeader(codigo_status) + segundaLinhaHeader(tipo_arquivo) + terceiraLinhaHeader(caminho)
+    with open(caminho, 'rb') as file:
+        body = file.read()
     
-    # p/ montar de vdd depois:
-    #with open('home.html', 'r') as file:
-    #   data = bytearray(file.read(), 'utf-8')
-    # alem disso, bytearrays podem ser concatenados usando '+'. exemplo:
-    # ex1 = bytearray("abc", "utf-8") + bytearray("def", "utf-8")
-    # ex1 = bytearray(b'abcdef')
-    
-    return bytearray(buffer_hard_coded, 'utf-8')
+    # PRA USAR O HARD CODED P TESTAR: DESCOMENTA AS PROXIMAS LINHAS E COMENTA AS DE CIMA
+    #with open('templates/BioBd_LOGO_ORIGINAL.png', 'rb') as file:
+    #    body = file.read()
+    #header = "HTTP/1.1 200 OK\r\n" + "Content-Type: image/png\r\n" + "Content-Length: 852\r\n\r\n"
+    #header = bytes(header, 'utf-8')
+    return header + body
 
 def fazTudo(fd):
     while True:
         buffer = fd.recv(1024).decode("utf-8")
         if not buffer:
             break
-        endereco = leRequisicao(buffer)
-        if endereco:
-            codigo_status, caminho = encontraArquivo(endereco)
-            texto_resposta = montaResposta(codigo_status, caminho)
-        else:
-            pass
+        try:
+            caminho, versao, tipo_arquivo = leRequisicao(buffer)
+        except TypeError:
+            print("Requisição desconhecida")
+            continue
+        print(f"CAMINHO: {caminho}")
+        codigo_status, caminho, tipo_arquivo = encontraArquivo(caminho, tipo_arquivo)
+        texto_resposta = montaResposta(codigo_status, tipo_arquivo, caminho)
         print(texto_resposta)
         fd.send(texto_resposta)
 

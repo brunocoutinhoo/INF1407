@@ -2,15 +2,16 @@
 
 """
 
-from sys import argv, stderr
-from os import abort, path
+from sys import argv, stderr, exit
+from os import abort, path, fork
 from socket import getaddrinfo, socket
 from socket import AF_INET, SOCK_STREAM, AI_ADDRCONFIG, AI_PASSIVE
 from socket import IPPROTO_TCP, SOL_SOCKET, SO_REUSEADDR
 from socket import gethostbyname
 from socket import gaierror
 import re
-from arquivo import EXTENSOES_CONHECIDAS
+import time
+from arquivo import EXTENSOES_CONHECIDAS, ARQUIVOS_DEFAULT, PAGINA_DE_ERRO_404, PORTA
 
 def getEnderecoHost(porta):
     try:
@@ -47,7 +48,7 @@ def bindaSocket(fd, porta):
 
 def escuta(fd):
     try:
-        fd.listen(0)
+        fd.listen(1)
     except:
         print("Erro ao começar a escutar a porta", file=stderr)
         abort()
@@ -57,7 +58,7 @@ def escuta(fd):
 def conecta(fd):
     (con, cliente) = fd.accept()
     print("Servidor conectado com", cliente)
-    return con
+    return con, cliente
 
 def leRequisicao(buffer):
     """ Recebe buffer da requisição, faz o parse e, caso ok, retorna endereço para arquivo solicitado.
@@ -82,7 +83,7 @@ def leRequisicao(buffer):
         print("Comando GET não encontrado")
         return None
 
-    return caminho, versao, tipo_arquivo
+    return caminho[1:], versao, tipo_arquivo
 
 def encontraArquivo(caminho, tipo_arquivo):
     """ Recebe caminho para arquivo e retorna status code que será dado e caminho.
@@ -98,16 +99,20 @@ def encontraArquivo(caminho, tipo_arquivo):
             e caminho para o arquivo que deverá ser passado para o cliente
     """
 
-    if not path.isfile(caminho[1:]) or (tipo_arquivo!= "/" and not EXTENSOES_CONHECIDAS.get(tipo_arquivo, 0)):
-        #TODO: buscar qual é o 404 do arq de config e exibí-lo; trocar esse [1:]
-        return 404, "templates/erro404.html", "html"
-    elif tipo_arquivo == "/":
-        #TODO: olhar nos arquivos default, retornar primeiro deles que seja válido (ou seja, q exista e
-        # tenha tipo conhecido)
-        return 404, "templates/erro404.html", "html"
+    if tipo_arquivo == "/":
+        for arquivo_default in ARQUIVOS_DEFAULT:
+            tipo_regex = re.compile(r'[^.]*$')
+            procura_pattern = tipo_regex.search(arquivo_default)
+            tipo_arquivo_default = procura_pattern.group(0)
+            if path.isfile(arquivo_default) and EXTENSOES_CONHECIDAS.get(tipo_arquivo_default,0):
+                return 200, arquivo_default, tipo_arquivo_default
+        return 404, PAGINA_DE_ERRO_404, "html"
+    elif not path.isfile(caminho) or (tipo_arquivo!= "/" and not EXTENSOES_CONHECIDAS.get(tipo_arquivo, 0)):
+        return 404, PAGINA_DE_ERRO_404, "html"
     else:
         #TODO: trocar esse [1:]
-        return 200, caminho[1:], tipo_arquivo
+        "/home.html"
+        return 200, caminho, tipo_arquivo
 
 def primeiraLinhaHeader(codigo_status):
     #TODO: cabeçalho
@@ -154,6 +159,7 @@ def montaResposta(codigo_status, tipo_arquivo, caminho):
 def fazTudo(fd):
     while True:
         buffer = fd.recv(1024).decode("utf-8")
+        print("RECEBIDO: ", buffer)
         if not buffer:
             break
         try:
@@ -165,28 +171,51 @@ def fazTudo(fd):
         codigo_status, caminho, tipo_arquivo = encontraArquivo(caminho, tipo_arquivo)
         texto_resposta = montaResposta(codigo_status, tipo_arquivo, caminho)
         print(texto_resposta)
+        time.sleep(20)
         fd.send(texto_resposta)
-
-    print("Conexão terminada com", fd)
-    fd.close()
     return
 
-def main():
+# def main():
+#     if len(argv) == 2:
+#         porta = int(argv[1])
+#     else:
+#         porta = 8752
+#     enderecoHost = getEnderecoHost(porta)
+#     fd = criaSocket(enderecoHost)
+#     setModo(fd)
+#     bindaSocket(fd, porta)
+#     print("Servidor pronto em", enderecoHost)
+#     escuta(fd)
+#     while True:
+#         con, cliente = conecta(fd)
+#         if con == -1:
+#             continue
+#         fazTudo(con)
+#     return
+
+def main(): 
     if len(argv) == 2:
         porta = int(argv[1])
     else:
         porta = 8752
     enderecoHost = getEnderecoHost(porta)
-    fd = criaSocket(enderecoHost)
-    setModo(fd)
-    bindaSocket(fd, porta)
+    tcpSocket = criaSocket(enderecoHost)
+    setModo(tcpSocket)
+    bindaSocket(tcpSocket, porta)
     print("Servidor pronto em", enderecoHost)
-    escuta(fd)
-    while True:
-        con = conecta(fd)
-        if con == -1:
-            continue
-        fazTudo(con)
+    escuta(tcpSocket) 
+    while(True):    
+        con, cliente = conecta(tcpSocket)
+        pid = fork() 
+        if pid == 0:             
+            tcpSocket.close() 
+            print("Servidor connectado com ", cliente) 
+            fazTudo(con)        
+            print("Conexão terminada com ", cliente) 
+            con.close() 
+            exit()         
+        else: 
+            con.close() 
     return
 
 if __name__ == '__main__':

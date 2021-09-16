@@ -1,6 +1,11 @@
 
 ARQUIVOS_DEFAULT = [
-
+    "templates/home.html",
+    "templates/index.html",
+    "templates/default.html",
+    "templates/home.htm",
+    "templates/index.htm",
+    "templates/default.htm",
 ]
 
 #Seleciona a porta do Servidor
@@ -10,7 +15,7 @@ PORTA = 8080
 DIRETORIO_FISICO = "C:/Users/bruno/OneDrive/Documents/PUC/INF1407/INF1407/T1"
 
 #HTML referente à página de erro 404
-PAGINA_DE_ERRO_404 = "erro404.html"
+PAGINA_DE_ERRO_404 = "templates/erro404.html"
 
 #Lista das extensões de arquivo que o servidor aceita, junto com os respectivos MIME types
 EXTENSOES_CONHECIDAS = {

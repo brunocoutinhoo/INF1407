@@ -215,7 +215,7 @@ def confere_configuracao():
     return
 
 def main():
-    confere_configuracao
+    confere_configuracao()
     if len(argv) == 2:
         porta = int(argv[1])
     else:

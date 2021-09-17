@@ -25,7 +25,7 @@ PORTA = 8080
 DIRETORIO_FISICO = ""
 
 #Arquivo referente à página que será exibida em caso de erro. Como exemplo, temos
-#uma página html que erro404.html". Não adicione o diretório
+#uma página html erro404.html". Não adicione o diretório
 #físico antes, basta colocar o caminho para o arquivo a partir dele.
 PAGINA_DE_ERRO_404 = "erro404.html"
 

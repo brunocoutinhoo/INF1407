@@ -18,7 +18,8 @@ Este será o arquivo default utilizado caso o pedido não receber nenhum nome de
 
 O Diretório Físico do trabalho deverá ser indicado no "arquivo.py".
 
-Também é importante que exista um arquivo de erro404 no diretório para ser exibido quando um caminho ou arquivo requisitado não existir.
+Também é importante que exista um arquivo de erro404 no diretório para ser exibido quando um caminho ou arquivo requisitado não existir. Deixamos um
+arquivo de erro html como exemplo.
 
 
 Execução do servidor (no cmd):

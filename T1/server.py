@@ -1,5 +1,8 @@
-"""
+""" Módulo principal do servidor web.
 
+Deve ser executado em ambiente linux. Caso queira especificar uma porta diferente
+da que está no arquivo de configuração (arquivo.py), execute este arquivo passando
+como único argumento o número da porta. Caso contrário, execute sem argumentos adicionais.
 """
 
 from sys import argv, stderr, exit
@@ -11,7 +14,8 @@ from socket import gethostbyname
 from socket import gaierror
 import re
 import time
-from arquivo import EXTENSOES_CONHECIDAS, ARQUIVOS_DEFAULT, PAGINA_DE_ERRO_404, PORTA
+from arquivo import EXTENSOES_CONHECIDAS, ARQUIVOS_DEFAULT, PAGINA_DE_ERRO_404, PORTA,\
+     DIRETORIO_FISICO, DELAY
 
 def getEnderecoHost(porta):
     try:
@@ -60,6 +64,13 @@ def conecta(fd):
     print("Servidor conectado com", cliente)
     return con, cliente
 
+def getExtensaoArquivo(caminho):
+    """Recebe caminho para um arquivo e retorna string com sua extensão."""
+
+    tipo_regex = re.compile(r'[^.]*$')    #Regex que identifica apenas caracteres após o ponto.
+    procura_pattern = tipo_regex.search(caminho) #O Regex é utilizado no caminho no arquivo para identificar a extensão do mesmo.
+    return procura_pattern.group(0)
+
 def leRequisicao(buffer):
     """ Recebe buffer da requisição, faz o parse e, caso ok, retorna endereço para arquivo solicitado.
     
@@ -71,19 +82,18 @@ def leRequisicao(buffer):
             vazio, será "/"), versão HTTP e tipo do arquivo, caso haja
     """
 
+    # Lê a string da requisição GET e divide cada informação relevante da primeira linha (Caminho do arquivo, versão e extensão do arquivo).
     if buffer[:3] == 'GET':
         comando_completo = buffer.split()
         caminho = comando_completo[1]
         versao = comando_completo[2]
-
-        tipo_regex = re.compile(r'[^.]*$')
-        procura_pattern = tipo_regex.search(caminho)
-        tipo_arquivo = procura_pattern.group(0)
+        tipo_arquivo = getExtensaoArquivo(caminho)
     else:
         print("Comando GET não encontrado")
         return None
-
-    return caminho[1:], versao, tipo_arquivo
+    # adiciona diretório local antes do caminho fornecido
+    caminho = DIRETORIO_FISICO + caminho[1:]
+    return caminho, versao, tipo_arquivo
 
 def encontraArquivo(caminho, tipo_arquivo):
     """ Recebe caminho para arquivo e retorna status code que será dado e caminho.
@@ -99,23 +109,26 @@ def encontraArquivo(caminho, tipo_arquivo):
             e caminho para o arquivo que deverá ser passado para o cliente
     """
 
-    if tipo_arquivo == "/":
+    # se caminho passado for um diretório, procura nos arquivos default
+    if path.isdir(caminho):
         for arquivo_default in ARQUIVOS_DEFAULT:
-            tipo_regex = re.compile(r'[^.]*$')
-            procura_pattern = tipo_regex.search(arquivo_default)
-            tipo_arquivo_default = procura_pattern.group(0)
-            if path.isfile(arquivo_default) and EXTENSOES_CONHECIDAS.get(tipo_arquivo_default,0):
+            arquivo_default = DIRETORIO_FISICO + arquivo_default
+            tipo_arquivo_default = getExtensaoArquivo(arquivo_default)
+            # se arquivo default for válido, retorna ele
+            if path.isfile(arquivo_default) and EXTENSOES_CONHECIDAS.get(tipo_arquivo_default, 0):
                 return 200, arquivo_default, tipo_arquivo_default
+        # se nenhum arquivo default for válido, retorna 404
         return 404, PAGINA_DE_ERRO_404, "html"
-    elif not path.isfile(caminho) or (tipo_arquivo!= "/" and not EXTENSOES_CONHECIDAS.get(tipo_arquivo, 0)):
-        return 404, PAGINA_DE_ERRO_404, "html"
-    else:
-        #TODO: trocar esse [1:]
-        "/home.html"
+    # se caminho e tipo arquivo ok
+    elif path.isfile(caminho) and EXTENSOES_CONHECIDAS.get(tipo_arquivo, 0):
         return 200, caminho, tipo_arquivo
+    else:
+        arquivo_erro = DIRETORIO_FISICO + PAGINA_DE_ERRO_404
+        return 404, arquivo_erro, getExtensaoArquivo(arquivo_erro)
 
 def primeiraLinhaHeader(codigo_status):
-    #TODO: cabeçalho
+    """Retorna a primeira linha do header no formato bytes de acordo com código."""
+
     if codigo_status == 200:
         return bytes("HTTP/1.1 200 OK\r\n", "utf-8")
     elif codigo_status == 404:
@@ -125,12 +138,15 @@ def primeiraLinhaHeader(codigo_status):
         abort()
 
 def segundaLinhaHeader(tipo_arquivo):
-    #TODO: cabeçalho
+    """Retorna linha Content-Type do header no formato bytes de acordo com tipo do arquivo."""
+    
+    # obs: já foi conferido antes que o tipo do arquivo está nas extensões conhecidas
     mime_type = EXTENSOES_CONHECIDAS.get(tipo_arquivo)
     return bytes(f"Content-Type: {mime_type}\r\n", "utf-8")
 
 def terceiraLinhaHeader(caminho):
-    #TODO: cabeçalho
+    """Retorna linha Content-Length do header no formato bytes de acordo com tamanho do arquivo."""
+
     tamanho = path.getsize(caminho)
     return bytes(f"Content-Length: {tamanho}\r\n\r\n", "utf-8")
 
@@ -144,22 +160,17 @@ def montaResposta(codigo_status, tipo_arquivo, caminho):
         bytearray com resposta completa que será dada ao cliente, com status code, mensagem,
             tamanho do arquivo em bytes, etc.
     """
-    #TODO: add mais coisa na header? nome do servidor, etc.
-    header = primeiraLinhaHeader(codigo_status) + segundaLinhaHeader(tipo_arquivo) + terceiraLinhaHeader(caminho)
+
+    header = primeiraLinhaHeader(codigo_status) + segundaLinhaHeader(tipo_arquivo) +\
+        terceiraLinhaHeader(caminho)
     with open(caminho, 'rb') as file:
         body = file.read()
-    
-    # PRA USAR O HARD CODED P TESTAR: DESCOMENTA AS PROXIMAS LINHAS E COMENTA AS DE CIMA
-    #with open('templates/BioBd_LOGO_ORIGINAL.png', 'rb') as file:
-    #    body = file.read()
-    #header = "HTTP/1.1 200 OK\r\n" + "Content-Type: image/png\r\n" + "Content-Length: 852\r\n\r\n"
-    #header = bytes(header, 'utf-8')
     return header + body
 
 def fazTudo(fd):
     while True:
         buffer = fd.recv(1024).decode("utf-8")
-        print("RECEBIDO: ", buffer)
+        print(buffer)
         if not buffer:
             break
         try:
@@ -167,37 +178,48 @@ def fazTudo(fd):
         except TypeError:
             print("Requisição desconhecida")
             continue
-        print(f"CAMINHO: {caminho}")
         codigo_status, caminho, tipo_arquivo = encontraArquivo(caminho, tipo_arquivo)
         texto_resposta = montaResposta(codigo_status, tipo_arquivo, caminho)
-        print(texto_resposta)
-        time.sleep(20)
+        time.sleep(DELAY)
+        print(f"Resposta enviada: {texto_resposta}")
         fd.send(texto_resposta)
     return
 
-# def main():
-#     if len(argv) == 2:
-#         porta = int(argv[1])
-#     else:
-#         porta = 8752
-#     enderecoHost = getEnderecoHost(porta)
-#     fd = criaSocket(enderecoHost)
-#     setModo(fd)
-#     bindaSocket(fd, porta)
-#     print("Servidor pronto em", enderecoHost)
-#     escuta(fd)
-#     while True:
-#         con, cliente = conecta(fd)
-#         if con == -1:
-#             continue
-#         fazTudo(con)
-#     return
+def confere_configuracao():
+    """Critica variáveis do arquivo de configuração. Em caso de erro, aborta."""
 
-def main(): 
+    try: EXTENSOES_CONHECIDAS and ARQUIVOS_DEFAULT and PAGINA_DE_ERRO_404 and PORTA and \
+         DIRETORIO_FISICO and DELAY
+    except NameError:
+        print("Erro: variável de configuração não encontrada", file=stderr)
+        abort()
+    if type(ARQUIVOS_DEFAULT) != list:
+        print("Erro: lista de arquivos default deve ser do tipo lista", file=stderr)
+        abort()
+    if type(PORTA) != int or PORTA < 0:
+        print("Erro: porta deve ser inteiro positivo", file=stderr)
+        abort()
+    if (not path.isdir(DIRETORIO_FISICO)) or (DIRETORIO_FISICO[-1:] != '/'):
+        print("Erro: diretório físico deve ser diretório válido terminado em '/'", file=stderr)
+        abort()
+    extensao_pag_erro = getExtensaoArquivo(DIRETORIO_FISICO + PAGINA_DE_ERRO_404)
+    if (not path.isfile(PAGINA_DE_ERRO_404)) or not EXTENSOES_CONHECIDAS.get(extensao_pag_erro, 0):
+        print("Erro: página 404 deve ser um arquivo válido", file=stderr)
+        abort()
+    if type(EXTENSOES_CONHECIDAS) != dict:
+        print("Erro: lista de extensões conhecidas deve ser do tipo dict", file=stderr)
+        abort()
+    if (type(DELAY) != int and type(DELAY) != float) or DELAY < 0:
+        print("Erro: delay deve ser número positivo (se quiser que não haja delay, coloque 0)", file=stderr)
+        abort()
+    return
+
+def main():
+    confere_configuracao
     if len(argv) == 2:
         porta = int(argv[1])
     else:
-        porta = 8752
+        porta = PORTA
     enderecoHost = getEnderecoHost(porta)
     tcpSocket = criaSocket(enderecoHost)
     setModo(tcpSocket)

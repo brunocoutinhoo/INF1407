@@ -78,8 +78,8 @@ def leRequisicao(buffer):
         buffer: string com texto da requisição
     Returns:
         - None, caso haja erro na requisição ou caso não seja do tipo GET
-        - caminho, versao, tipo_arquivo. três strings: caminho para o arquivo solicitado (caso seja
-            vazio, será "/"), versão HTTP e tipo do arquivo, caso haja
+        - caminho, tipo_arquivo. duas strings: caminho para o arquivo solicitado (caso seja
+            vazio, será "/") e tipo do arquivo, caso haja
     """
 
     # Lê a string da requisição GET e divide cada informação relevante da primeira linha (Caminho do arquivo, versão e extensão do arquivo).
@@ -93,7 +93,7 @@ def leRequisicao(buffer):
         return None
     # adiciona diretório local antes do caminho fornecido
     caminho = DIRETORIO_FISICO + caminho[1:]
-    return caminho, versao, tipo_arquivo
+    return caminho, tipo_arquivo
 
 def encontraArquivo(caminho, tipo_arquivo):
     """ Recebe caminho para arquivo e retorna status code que será dado e caminho.
@@ -118,7 +118,8 @@ def encontraArquivo(caminho, tipo_arquivo):
             if path.isfile(arquivo_default) and EXTENSOES_CONHECIDAS.get(tipo_arquivo_default, 0):
                 return 200, arquivo_default, tipo_arquivo_default
         # se nenhum arquivo default for válido, retorna 404
-        return 404, PAGINA_DE_ERRO_404, "html"
+        arquivo_erro = DIRETORIO_FISICO + PAGINA_DE_ERRO_404
+        return 404, arquivo_erro, getExtensaoArquivo(arquivo_erro)
     # se caminho e tipo arquivo ok
     elif path.isfile(caminho) and EXTENSOES_CONHECIDAS.get(tipo_arquivo, 0):
         return 200, caminho, tipo_arquivo
@@ -174,7 +175,7 @@ def fazTudo(fd):
         if not buffer:
             break
         try:
-            caminho, versao, tipo_arquivo = leRequisicao(buffer)
+            caminho, tipo_arquivo = leRequisicao(buffer)
         except TypeError:
             print("Requisição desconhecida")
             continue
